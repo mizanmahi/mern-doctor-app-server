@@ -3,6 +3,12 @@ const app = express();
 const cors = require('cors');
 const dotenv = require('dotenv').config();
 const { MongoClient } = require('mongodb');
+const admin = require('firebase-admin');
+const serviceAccount = require('./doctor-portal-firebase-adminsdk.json');
+
+admin.initializeApp({
+   credential: admin.credential.cert(serviceAccount),
+});
 
 const port = process.env.PORT || 5000; // important for heroku
 
@@ -15,6 +21,29 @@ const client = new MongoClient(uri, {
    useNewUrlParser: true,
    useUnifiedTopology: true,
 });
+
+//@ token verifying middleware
+const verifyToken = async (req, res, next) => {
+   if (
+      req.headers?.authorization &&
+      req.headers?.authorization?.startsWith('Bearer ')
+   ) {
+      const idToken = req.headers.authorization.split('Bearer ')[1];
+      try {
+         const decodedIdToken = await admin.auth().verifyIdToken(idToken);
+         req.decodedEmail = decodedIdToken.email;
+         return next();
+      } catch (error) {
+         console.log('Error while verifying Firebase ID token:', error.message);
+         return res.status(403).json({ message: error.message });
+      }
+   } else {
+      console.log(
+         'No Firebase ID token was passed as a Bearer token in the Authorization header.'
+      );
+      return res.status(403).json({ message: 'Unauthorized' });
+   }
+};
 
 const main = async () => {
    try {
@@ -36,7 +65,6 @@ const main = async () => {
          });
 
          const bookings = await cursor.toArray();
-
          res.json(bookings);
       });
 
@@ -47,6 +75,13 @@ const main = async () => {
          );
          appointBooking._id = insertedId;
          res.json(appointBooking);
+      });
+
+      // GET getting a single user by email
+      app.get('/users/:email', async (req, res) => {
+         const { email } = req.params;
+         const user = await userCollection.findOne({ email });
+         res.json(user);
       });
 
       app.post('/users', async (req, res) => {
@@ -72,6 +107,29 @@ const main = async () => {
          );
          user._id = result.upsertedId;
          res.json(user);
+      });
+
+      app.put('/users/admin', verifyToken, async (req, res) => {
+         const { email } = req.body;
+         const { decodedEmail } = req;
+
+         if (decodedEmail) {
+            const requester = await userCollection.findOne({
+               email: decodedEmail,
+            });
+            if (requester.role === 'admin') {
+               const result = await userCollection.updateOne(
+                  { email },
+                  { $set: { role: 'admin' } }
+               );
+
+               res.json(result);
+            } else {
+               res.status(403).json({
+                  message: 'You are not allowed to make admin',
+               });
+            }
+         }
       });
    } catch (err) {
       console.error({ dbError: err });
