@@ -1,1 +1,1 @@
-# Doctors portal server
+# Doctors portal server (MERN)

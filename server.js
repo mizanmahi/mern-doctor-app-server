@@ -4,10 +4,9 @@ const cors = require('cors');
 const dotenv = require('dotenv').config();
 const { MongoClient } = require('mongodb');
 const admin = require('firebase-admin');
-const serviceAccount = require('./doctor-portal-firebase-adminsdk.json');
 
 admin.initializeApp({
-   credential: admin.credential.cert(serviceAccount),
+   credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACC_SDK)),
 });
 
 const port = process.env.PORT || 5000; // important for heroku
